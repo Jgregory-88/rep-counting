@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Pose Classification & Rep Counter (Phase Indicator)</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+<style>
+    /* Basic styling for the page */
+    body {
+        font-family: 'Arial', sans-serif; /* Clean sans-serif font */ [cite: 2]
+        margin: 20px;
+        background-color: #f4f4f4; /* Light grey background */ [cite: 3]
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* Center content */ [cite: 4]
+        color: #333; /* Dark text color */ [cite: 5]
+    }
+    /* Heading styles */
+    h1, h2 {
+        margin-top: 0;
+        text-align: center; [cite: 6]
+        color: #1a1a1a;
+    }
+    /* Container boxes for sections */
+    .section-box {
+        background: #ffffff; /* White background for sections */ [cite: 7]
+        padding: 25px;
+        border-radius: 10px; /* Rounded corners */ [cite: 8]
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1); /* Subtle shadow */ [cite: 9]
+        margin-bottom: 25px;
+        width: 90%;
+        max-width: 700px; /* Limit maximum width */ [cite: 10]
+        box-sizing: border-box; [cite: 11]
+    }
+    /* Button styling */
+    button {
+        margin: 5px 10px;
+        padding: 10px 18px; [cite: 12]
+        cursor: pointer;
+        border-radius: 6px;
+        border: none; /* Remove default border */
+        background-color: #007bff; /* Blue background */ [cite: 13]
+        color: white; /* White text */ [cite: 14]
+        font-size: 0.95em;
+        transition: background-color 0.3s ease, box-shadow 0.3s ease; /* Smooth transitions */ [cite: 15]
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1); [cite: 16]
+    }
+    button:hover {
+        background-color: #0056b3; /* Darker blue on hover */ [cite: 17]
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15); [cite: 18]
+    }
+    button:disabled {
+        background-color: #cccccc; /* Grey background when disabled */ [cite: 19]
+        color: #666666;
+        cursor: not-allowed;
+        opacity: 0.7;
+        box-shadow: none; [cite: 20]
+    }
+    /* Container for video and overlay canvas */
+    .overlay-container {
+        position: relative;
+        display: block; [cite: 21]
+        width: 100%;
+        max-width: 640px;
+        margin: 0 auto;
+        border: 1px solid #ddd; /* Lighter border */ [cite: 22]
+        box-sizing: border-box;
+        border-radius: 8px; /* Rounded corners */ [cite: 23]
+        overflow: hidden; /* Keep canvas inside */ [cite: 24]
+        background-color: #eee; /* Background for the container */ [cite: 25]
+    }
+    /* Video element styling */
+    video {
+        display: block; /* Remove extra space below video */ [cite: 26]
+        width: 100%;
+        height: auto; /* Maintain aspect ratio */ [cite: 27]
+        border-radius: 8px; /* Match container */ [cite: 28]
+    }
+    /* Overlay canvas styling */
+    #overlay {
+        position: absolute;
+        top: 0; [cite: 29]
+        left: 0;
+        pointer-events: none; /* Allow interaction with video */
+        width: 100%; /* Ensure canvas covers video */ [cite: 30]
+        height: 100%; [cite: 31]
+    }
+    /* Text elements for status/debug */
+    #debug-text, #status-text, #input-status {
+        font-size: 0.9em;
+        color: #555; /* Medium grey text */ [cite: 32]
+        margin-top: 10px;
+        text-align: center; [cite: 33]
+    }
+    #input-status {
+        font-style: italic; [cite: 34]
+    }
+    /* Button container styling */
+    .button-container {
+        text-align: center;
+        margin-top: 15px; [cite: 35]
+    }
+    /* Status text styling */
+    #orientation-status, #confidence-status, #model-pose-status, #final-pose-status, .rep-count-item {
+        font-size: 0.95em; /* Slightly larger font */ [cite: 36]
+        color: #444; /* Darker grey */ [cite: 37]
+        margin-top: 8px; [cite: 38]
+    }
+    /* Bold span within rep count item */
+    .rep-count-item span {
+        font-weight: bold;
+        font-size: 1.15em; /* Larger rep count number */ [cite: 39]
+        color: #0056b3; /* Match button hover color */ [cite: 40]
+        margin-left: 8px; [cite: 41]
+    }
+    /* Styling for the Up/Down phase indicator */
+    .pose-phase {
+        margin-left: 8px;
+        font-style: italic; [cite: 42]
+        color: #e85d04; /* Orange color for phase */
+        min-width: 50px; /* Ensure alignment even when blank */ [cite: 43]
+        display: inline-block; /* Keep it inline */ [cite: 44]
+        font-weight: 500; [cite: 45]
+    }
+    /* File input styling */
+    input[type="file"] {
+        margin: 15px 0; [cite: 46]
+        display: block; /* Make it block level */
+        margin-left: auto;
+        margin-right: auto; /* Center it */ [cite: 47]
+    }
+    /* Styling for equipment toggles */
+    .toggle-container label {
+        margin: 0 15px; /* Space around labels */ [cite: 48]
+        cursor: pointer;
+        user-select: none; /* Prevent text selection */ [cite: 49]
+        font-size: 0.9em; [cite: 50]
+    }
+    .toggle-container input[type="checkbox"] {
+        margin-right: 5px;
+        cursor: pointer;
+        vertical-align: middle; /* Align checkbox with text */ [cite: 51]
+    }
+    /* Container for horizontal rep counters */
+    .rep-counter-container {
+        display: flex; /* Enable flexbox */ [cite: 52]
+        justify-content: space-around; /* Distribute items evenly */ [cite: 53]
+        flex-wrap: wrap; /* Allow wrapping on smaller screens */ [cite: 54]
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #eee; /* Separator line */ [cite: 55]
+        text-align: center; /* Center text within items */ [cite: 56]
+    }
+    /* Individual rep counter item styling */
+    .rep-count-item {
+        margin: 5px 10px; /* Add some spacing between items */ [cite: 57]
+        flex-basis: auto; /* Allow items to size based on content */ [cite: 58]
+    }
+    /* Add a subtle divider */
+    hr {
+      border: none;
+      height: 1px; [cite: 59]
+      background-color: #eee;
+      margin: 15px 0;
+    }
+</style>
+</head>
+<body>
+
+<h1>Pose Classification & Rep Counter</h1>
+
+<div class="section-box">
+    <h2>Input Control</h2>
+    <div class="button-container">
+        <button id="start-webcam-btn" disabled>Start Webcam</button>
+        <button id="stop-input-btn" disabled>Stop Input</button>
+    </div>
+    <div style="text-align: center; margin-top: 15px;">
+        <label for="video-upload">Upload Video:</label>
+        <input type="file" id="video-upload" accept="video/*">
+    </div>
+    <p id="input-status" style="text-align: center; margin-top: 10px;">Initializing...</p>
+</div>
+
+<div class="section-box">
+    <h2>Equipment Detected (Manual Toggle)</h2>
+    <div class="toggle-container" style="text-align: center; padding-top: 10px;"> [cite: 60]
+        <label for="pullup-bar-toggle"> <input type="checkbox" id="pullup-bar-toggle"> Pullup Bar </label>
+        <label for="barbell-toggle"> <input type="checkbox" id="barbell-toggle"> Barbell </label>
+        <label for="dumbbells-toggle"> <input type="checkbox" id="dumbbells-toggle"> Dumbbells </label>
+    </div>
+</div>
+
+<div class="section-box">
+    <h2>Pose State Estimation</h2>
+    <p id="model-pose-status">Model Estimate: <strong id="pose-estimate">-</strong></p>
+    <p id="confidence-status">Confidence: <strong id="pose-confidence">-</strong></p>
+    <p id="orientation-status">Orientation: <strong id="orientation-value">-</strong></p>
+    <hr>
+    <p id="final-pose-status" style="font-weight: bold;">Final Pose State: <strong id="final-pose">-</strong></p>
+    <div class="rep-counter-container"> [cite: 61]
+        <div class="rep-count-item">Pushups: <span id="pushup-reps">0</span> <span id="pushup-phase" class="pose-phase"></span></div>
+        <div class="rep-count-item">Pullups: <span id="pullup-reps">0</span> <span id="pullup-phase" class="pose-phase"></span></div>
+        <div class="rep-count-item">Squats: <span id="squat-reps">0</span> <span id="squat-phase" class="pose-phase"></span></div>
+        <div class="rep-count-item">Curls: <span id="curl-reps">0</span> <span id="curl-phase" class="pose-phase"></span></div>
+    </div>
+    <div class="button-container" style="margin-top: 15px;">
+        <button id="download-log-btn" disabled>Download Log</button>
+    </div>
+</div>
+
+<div class="section-box" style="display:none;" id="display-section"> [cite: 62]
+    <h2>Live Feed / Video</h2>
+    <div class="overlay-container" id="media-container">
+        <video id="display-video" playsinline controls muted></video>
+        <canvas id="overlay"></canvas>
+    </div>
+    <p id="debug-text"></p>
+</div>
+
+<script>
+// --- Global Variables ---
+let poseModel, labelMap, scalerParams, detector = null; // ML models and parameters [cite: 63]
+let displayVideo, overlayCanvas, overlayCtx, videoUploadInput, startWebcamBtn, stopInputBtn, downloadLogBtn, inputStatusElement, displaySection = null; // DOM elements [cite: 64]
+let activeInputStream = null; // Media stream (webcam)
+let isInputRunning = false; // Flag: Is webcam/video processing active? [cite: 65]
+let isProcessingVideoFile = false; // Flag: Is the input a video file? [cite: 65]
+let rafId = null; // RequestAnimationFrame ID for webcam loop [cite: 66]
+let videoProcessingHandle = null; // setTimeout handle for video file loop
+let poseSequenceLog = []; // Array to store pose data over time [cite: 67]
+let poseHistory = []; // Short history of recent final poses [cite: 68]
+
+// Equipment toggles state
+let isPullupBarDetected = false;
+let isBarbellDetected = false;
+let isDumbbellsDetected = false; [cite: 69]
+
+// --- Constants ---
+const CONFIDENCE_THRESHOLD_PERCENT = 60; // Minimum confidence for model prediction acceptance [cite: 70]
+const FRAME_PROCESSING_INTERVAL_MS = 100; // Target interval between frame processing (approx 10 FPS) [cite: 71]
+const POSE_HISTORY_LENGTH = 10; // Number of frames to keep in pose history (used for curl reset) [cite: 72]
+const CURL_RESET_FRAMES = POSE_HISTORY_LENGTH; // Frames to wait for curl 'Up' before resetting phase/state [cite: 73]
+const REP_PERSISTENCE_FRAMES = 2; // Frames a pose must be held for pushup state change (debounce) [cite: 74]
+
+// --- Rep Counting State Machine Globals ---
+let pushupReps = 0, pullupReps = 0, squatReps = 0, curlReps = 0; // Rep counters [cite: 75]
+let pushupState = 'UP', pullupState = 'DOWN', squatState = 'UP', curlState = 'DOWN'; // Internal state for each exercise [cite: 76]
+
+// NEW: Phase tracking variables ('Up', 'Down', or '')
+let pushupPhase = '', pullupPhase = '', squatPhase = '', curlPhase = ''; [cite: 77]
+let curlDownFrames = 0; // Counter for curl reset logic (frames since 'Down' without seeing 'Up') [cite: 77]
+
+// Variables for pushup debouncing
+let pushupLastSeenPose = null; [cite: 78]
+let pushupConsecutiveCount = 0; [cite: 78]
+
+// --- Debugging Flag ---
+// Set this to true to enable detailed logging in the console
+const ENABLE_DIAGNOSTIC_LOGGING = true; [cite: 79]
+
+// --- Function to Load All Necessary Resources (Models, Labels, Scaler) ---
+async function loadAppResources() {
+    console.log("Loading application resources..."); [cite: 80]
+    const modelStatusElement = document.getElementById("pose-estimate");
+    inputStatusElement = document.getElementById("input-status");
+    startWebcamBtn = document.getElementById("start-webcam-btn");
+    modelStatusElement.innerText = "Loading MoveNet...";
+    inputStatusElement.textContent = "Initializing..."; [cite: 81]
+    try {
+        detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet);
+        console.log("MoveNet loaded successfully!"); [cite: 82]
+        modelStatusElement.innerText = "Loading Pose Model..."; [cite: 82]
+        poseModel = await tf.loadGraphModel("pose_classifier_tfjs/model.json");
+        console.log("Pose Model loaded.");
+        modelStatusElement.innerText = "Loading Label Map..."; [cite: 83]
+        const res = await fetch("state_labels.json"); [cite: 83]
+        if (!res.ok) throw new Error(`Failed to fetch state_labels.json: ${res.statusText}`);
+        labelMap = await res.json(); [cite: 84]
+        console.log("Label map loaded:", labelMap); [cite: 84]
+        modelStatusElement.innerText = "Loading Scaler Params..."; [cite: 85]
+        const scalerRes = await fetch("scaler_params.json"); [cite: 85]
+        if (!scalerRes.ok) throw new Error(`Failed to fetch scaler_params.json: ${scalerRes.statusText}`);
+        scalerParams = await scalerRes.json();
+        console.log("Scaler params loaded:", scalerParams); [cite: 86]
+        if (!scalerParams || !Array.isArray(scalerParams.mean) || !Array.isArray(scalerParams.scale) || scalerParams.mean.length !== scalerParams.scale.length) { [cite: 86]
+            throw new Error("Invalid scaler_params.json structure"); [cite: 87]
+        }
+        console.log(`Scaler expects ${scalerParams.mean.length} features.`); [cite: 87]
+        modelStatusElement.innerText = "-"; [cite: 88]
+        inputStatusElement.textContent = "Ready. Select input (Webcam or Video File)."; [cite: 88]
+        startWebcamBtn.disabled = false;
+        console.log("All resources loaded successfully."); [cite: 89]
+    } catch (err) {
+        console.error("Error loading resources:", err); [cite: 89]
+        modelStatusElement.innerText = `Error`; [cite: 90]
+        if (err.message.includes('fetch') || err.message.includes('404')) { [cite: 90]
+             inputStatusElement.textContent = `Initialization Error: Failed to load model/config files. Check paths and ensure files exist. See console.`; [cite: 91]
+        } else {
+            inputStatusElement.textContent = `Initialization Error: ${err.message}. Check console.`; [cite: 92]
+        }
+        poseModel = null; labelMap = null; scalerParams = null; [cite: 93]
+        detector = null; [cite: 93]
+        startWebcamBtn.disabled = true;
+    }
+}
+
+// --- Feature Extraction: Prepare pose data for the classification model ---
+function extractFeaturesFromFrame(frameData, orientationString) {
+    if (!scalerParams || !scalerParams.mean || !scalerParams.scale || scalerParams.mean.length === 0) {
+        console.error("Scaler params not ready or invalid."); [cite: 94]
+        return { tensor: null, scaledInputArray: null }; // Return object indicating failure [cite: 94]
+    }
+    const expectedFeatureLength = scalerParams.mean.length; [cite: 95]
+    let rawInput = [];
+    const keypoints = frameData.keypoints || []; [cite: 96]
+    for (let i = 0; i < 17; i++) { [cite: 96]
+        const k = keypoints[i]; [cite: 97]
+        if (k && typeof k === 'object') { [cite: 97]
+            rawInput.push(k.x || 0.0); [cite: 98]
+            rawInput.push(k.y || 0.0); rawInput.push(k.score || 0.0); [cite: 98]
+        } else { rawInput.push(0.0, 0.0, 0.0); [cite: 99]
+        }
+    }
+    const angles = frameData.angles || {};
+    rawInput.push(angles.leftElbow || 0.0); rawInput.push(angles.rightElbow || 0.0); [cite: 100]
+    rawInput.push(angles.leftKnee || 0.0); rawInput.push(angles.rightKnee || 0.0); [cite: 100]
+    let orientation_num = -1.0;
+    if (orientationString === 'Horizontal') { orientation_num = 1.0; [cite: 101]
+    }
+    else if (orientationString === 'Vertical') { orientation_num = 0.0; }
+    rawInput.push(orientation_num); [cite: 102]
+    if (rawInput.length !== expectedFeatureLength) {
+        console.error(`Feature length mismatch: input has ${rawInput.length}, scaler expects ${expectedFeatureLength}.`); [cite: 103]
+        return { tensor: null, scaledInputArray: null }; // Return object indicating failure [cite: 103]
+    }
+
+    let scaledInputArray = rawInput.map((value, index) => {
+        if (index >= scalerParams.mean.length || index >= scalerParams.scale.length) { return 0; }
+        const mean = scalerParams.mean[index]; const scale = scalerParams.scale[index];
+        if (scale === null || scale === undefined || scale === 0 || !isFinite(scale)) { return 0; }
+        return (value - mean) / scale;
+
+     }); [cite: 104]
+
+    // Return both the tensor and the raw scaled array for logging
+    return {
+        tensor: tf.tensor([scaledInputArray]),
+        scaledInputArray: scaledInputArray // Return the array for easier logging
+     }; [cite: 105]
+}
+
+
+// --- Orientation Calculation: Determine if pose is Vertical, Horizontal, or Unknown ---
+function getPoseOrientation(keypoints) {
+    const confThreshold = 0.3; [cite: 106]
+    if (!keypoints || keypoints.length < 13) return "Unknown"; [cite: 106]
+    const leftShoulder = keypoints[5]; const rightShoulder = keypoints[6];
+    const leftHip = keypoints[11]; [cite: 107]
+    const rightHip = keypoints[12]; [cite: 107]
+    if (!leftShoulder || leftShoulder.score < confThreshold || !rightShoulder || rightShoulder.score < confThreshold ||
+        !leftHip || leftHip.score < confThreshold || !rightHip || rightHip.score < confThreshold) {
+        return "Unknown"; [cite: 108]
+    }
+    const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2; const avgHipY = (leftHip.y + rightHip.y) / 2; [cite: 109]
+    const horizontalDist = Math.abs(leftShoulder.x - rightShoulder.x); [cite: 109]
+    const verticalDist = Math.abs(avgShoulderY - avgHipY); [cite: 110]
+    if (horizontalDist < 1e-6 && verticalDist < 1e-6) return "Unknown"; [cite: 110]
+    if (verticalDist > horizontalDist * 1.2) return "Vertical"; [cite: 111]
+    else if (horizontalDist > verticalDist * 1.2) return "Horizontal"; [cite: 111]
+    else return "Intermediate/Unknown"; [cite: 112]
+}
+
+// --- Angle Calculation: Compute key joint angles ---
+function computeCommonAngles(kpArray) {
+    const getPoint = (index) => (kpArray && kpArray[index]) || {x: 0, y: 0, score: 0}; [cite: 113]
+    const p = (index) => ({ x: getPoint(index).x, y: getPoint(index).y }); [cite: 114]
+    const leftShoulder = p(5), rightShoulder = p(6); const leftElbowPt = p(7), rightElbowPt = p(8); [cite: 115]
+    const leftWrist = p(9), rightWrist = p(10); const leftHip = p(11), rightHip = p(12); [cite: 115]
+    const leftKneePt = p(13), rightKneePt = p(14); const leftAnkle = p(15), rightAnkle = p(16); [cite: 116]
+    const leftElbowAngle = angleFrom3Points(leftShoulder, leftElbowPt, leftWrist); [cite: 117]
+    const rightElbowAngle = angleFrom3Points(rightShoulder, rightElbowPt, rightWrist); [cite: 117]
+    const leftKneeAngle = angleFrom3Points(leftHip, leftKneePt, leftAnkle);
+    const rightKneeAngle = angleFrom3Points(rightHip, rightKneePt, rightAnkle); [cite: 118]
+    return { leftElbow: leftElbowAngle, rightElbow: rightElbowAngle, leftKnee: leftKneeAngle, rightKnee: rightKneeAngle }; [cite: 119]
+}
+// Helper function to calculate angle between three points (A, B, C -> angle at B)
+function angleFrom3Points(A, B, C) {
+    if (!A || typeof A.x !== 'number' || !B || typeof B.x !== 'number' || !C || typeof C.x !== 'number') return 0; [cite: 120]
+    const BAx = A.x - B.x; const BAy = A.y - B.y; const BCx = C.x - B.x; [cite: 121]
+    const BCy = C.y - B.y; [cite: 121]
+    const dot = BAx * BCx + BAy * BCy; [cite: 122]
+    const magBA = Math.sqrt(BAx*BAx + BAy*BAy); const magBC = Math.sqrt(BCx*BCx + BCy*BCy); [cite: 123]
+    if (magBA === 0 || magBC === 0) return 0; let cosAngle = dot / (magBA * magBC); [cite: 123]
+    cosAngle = Math.max(-1, Math.min(1, cosAngle)); const angleRad = Math.acos(cosAngle); [cite: 124]
+    return angleRad * (180 / Math.PI); [cite: 125]
+}
+
+// --- Rep Counting & Phase Update Logic ---
+function updateRepCountersAndPhase(currentPose, keypoints) {
+    try {
+        let previousCurlPhase = curlPhase; [cite: 126]
+        pushupPhase = ''; pullupPhase = ''; squatPhase = ''; curlPhase = ''; [cite: 127]
+        // --- Pushup Logic ---
+        try {
+            if (currentPose === pushupLastSeenPose) { pushupConsecutiveCount++; [cite: 128]
+            }
+            else { pushupLastSeenPose = currentPose; pushupConsecutiveCount = 1; [cite: 129]
+            }
+            if (currentPose === 'pushup_down') {
+                pushupPhase = 'Down'; [cite: 130]
+                if (pushupState === 'UP' && pushupConsecutiveCount >= REP_PERSISTENCE_FRAMES) { [cite: 130]
+                    pushupState = 'DOWN'; [cite: 131]
+                    pushupConsecutiveCount = 0; [cite: 131]
+                }
+            } else if (currentPose === 'pushup_up') {
+                pushupPhase = 'Up'; [cite: 132]
+                if (pushupState === 'DOWN' && pushupConsecutiveCount >= REP_PERSISTENCE_FRAMES) { [cite: 132]
+                    pushupReps++; [cite: 133]
+                    pushupState = 'UP'; console.log(`*** Pushup Rep Counted: ${pushupReps} ***`); [cite: 133]
+                    document.getElementById('pushup-reps').innerText = pushupReps; pushupConsecutiveCount = 0; [cite: 134]
+                }
+            }
+        } catch (e) { console.error("Error in Pushup Logic:", e); [cite: 135]
+        }
+
+        // --- Pullup Logic ---
+        try {
+            if (currentPose === 'pullup_up') {
+                pullupPhase = 'Up'; [cite: 136]
+                if (pullupState === 'DOWN') { pullupState = 'UP'; } [cite: 136]
+            } else if (currentPose === 'pullup_down') {
+                pullupPhase = 'Down'; [cite: 137]
+                if (pullupState === 'UP') { [cite: 137]
+                    pullupReps++; [cite: 138]
+                    pullupState = 'DOWN'; console.log(`*** Pullup Rep Counted: ${pullupReps} ***`); [cite: 138]
+                    document.getElementById('pullup-reps').innerText = pullupReps; [cite: 139]
+                }
+            }
+        } catch (e) { console.error("Error in Pullup Logic:", e); [cite: 140]
+        }
+
+        // --- Squat Logic ---
+        try {
+            if (currentPose === 'squat_down') {
+                squatPhase = 'Down'; [cite: 141]
+                if (squatState === 'UP') { squatState = 'DOWN'; } [cite: 141]
+            } else if (currentPose === 'squat_up') {
+                squatPhase = 'Up'; [cite: 142]
+                if (squatState === 'DOWN') { [cite: 142]
+                    squatReps++; [cite: 143]
+                    squatState = 'UP'; console.log(`*** Squat Rep Counted: ${squatReps} ***`); [cite: 143]
+                    document.getElementById('squat-reps').innerText = squatReps; [cite: 144]
+                }
+            }
+        } catch (e) { console.error("Error in Squat Logic:", e); [cite: 145]
+        }
+
+        // --- Curl Logic with Reset ---
+        try {
+             if (currentPose === 'curl_up' || (currentPose === 'squat_up' && (isBarbellDetected || isDumbbellsDetected))) { [cite: 146]
+                 curlPhase = 'Up'; [cite: 146]
+                 curlDownFrames = 0; if (curlState === 'DOWN') { curlState = 'UP'; [cite: 147]
+                 }
+             } else if (currentPose === 'curl_down') {
+                 curlPhase = 'Down'; [cite: 148]
+                 curlDownFrames++; [cite: 148]
+                 if (curlState === 'UP') {
+                     curlReps++; [cite: 149]
+                     curlState = 'DOWN'; console.log(`*** Curl Rep Counted: ${curlReps} ***`); [cite: 149]
+                     document.getElementById('curl-reps').innerText = curlReps; curlDownFrames = 1; [cite: 150]
+                 }
+             } else {
+                 if (previousCurlPhase === 'Down') { curlDownFrames++; [cite: 151]
+                     curlPhase = 'Down'; } [cite: 151]
+                 else { curlDownFrames = 0; [cite: 152]
+                     curlPhase = ''; } [cite: 152]
+             }
+             if (curlPhase === 'Down' && curlDownFrames > CURL_RESET_FRAMES) {
+                 console.log(`Curl reset triggered after ${curlDownFrames} frames.`); [cite: 153]
+                 curlPhase = ''; curlState = 'DOWN'; curlDownFrames = 0; [cite: 153]
+             }
+             if (curlPhase !== 'Down' && currentPose !== 'curl_up' && !(currentPose === 'squat_up' && (isBarbellDetected || isDumbbellsDetected))) {
+                  curlPhase = ''; [cite: 154]
+             }
+        } catch (e) { console.error("Error in Curl Logic:", e); [cite: 155]
+        }
+
+        // --- Update UI Display with Phase Status ---
+        try {
+            document.getElementById('pushup-phase').innerText = pushupPhase ? `(${pushupPhase})` : ''; [cite: 156]
+            document.getElementById('pullup-phase').innerText = pullupPhase ? `(${pullupPhase})` : '';
+            document.getElementById('squat-phase').innerText = squatPhase ? `(${squatPhase})` : ''; [cite: 157]
+            document.getElementById('curl-phase').innerText = curlPhase ? `(${curlPhase})` : ''; [cite: 157]
+        } catch (e) { console.error("Error updating phase UI:", e); [cite: 158]
+        }
+
+    } catch (outerError) {
+        console.error("Unhandled error in updateRepCountersAndPhase:", outerError); [cite: 159]
+    }
+}
+
+
+// --- Process Pose Detection: Main function called each frame/interval ---
+async function processPoseDetection(poses) {
+    let modelEstimate = "No pose detected", confidence = 0, orientation = "Unknown", finalPose = "Neutral", displayConfidenceStr = "-"; [cite: 160]
+    let currentKeypoints = null;
+    let frameTimestamp = Date.now(); // Timestamp for logging consistency
+
+    try {
+        if (poses && poses.length > 0 && poses[0].keypoints) {
+            currentKeypoints = poses[0].keypoints; [cite: 161]
+            const kpArr = currentKeypoints;
+
+            // --- Step 1: Pre-processing ---
+            orientation = getPoseOrientation(kpArr); [cite: 162]
+            const angles = computeCommonAngles(kpArr); [cite: 162]
+            // Extract features (returns tensor and scaled array)
+            const { tensor: inputTensor, scaledInputArray } = extractFeaturesFromFrame({ keypoints: kpArr, angles: angles }, orientation); [cite: 163]
+            // --- DIAGNOSTIC LOG: Input Features ---
+            if (ENABLE_DIAGNOSTIC_LOGGING && inputTensor) {
+                console.log(`[${frameTimestamp}] Input - Orientation: ${orientation}, Angles:`, angles); [cite: 164]
+                // Log the scaled array, it's easier to read than the tensor directly
+                console.log(`[${frameTimestamp}] Input - Scaled Features Array:`, scaledInputArray); [cite: 165]
+            }
+            // --- END LOG ---
+
+            // --- Step 2: Model Prediction ---
+            if (inputTensor && poseModel) {
+                let predictionTensor = null; [cite: 166]
+                try {
+                    predictionTensor = poseModel.predict(inputTensor); [cite: 167]
+                    // --- DIAGNOSTIC LOG: Raw Probabilities ---
+                    if (ENABLE_DIAGNOSTIC_LOGGING && predictionTensor) {
+                        const probabilities = await predictionTensor.data(); [cite: 168]
+                        // Use .data() for async retrieval
+                        const probabilityMap = {}; [cite: 169]
+                        if (labelMap) { [cite: 169]
+                            probabilities.forEach((prob, index) => {
+                                probabilityMap[labelMap[index] || `Class_${index}`] = prob.toFixed(4);
+                            }); [cite: 170]
+                        }
+                        console.log(`[${frameTimestamp}] Output - Raw Probabilities:`, probabilityMap); [cite: 171]
+                    }
+                    // --- END LOG ---
+
+
+                    const { values, indices } = tf.tidy(() => ({
+                        values: tf.max(predictionTensor, -1).clone(),
+
+                        indices: tf.argMax(predictionTensor, -1).clone() [cite: 172]
+                    })); [cite: 173]
+                    const [maxProbData, labelIdxData] = await Promise.all([values.data(), indices.data()]);
+                    confidence = maxProbData[0];
+                    modelEstimate = labelMap && labelMap[labelIdxData[0]] ? labelMap[labelIdxData[0]] : `Error: Index ${labelIdxData[0]}?`; [cite: 174]
+                    displayConfidenceStr = (confidence * 100).toFixed(1) + "%";
+                    values.dispose(); indices.dispose(); [cite: 175]
+                } catch (error) {
+                    console.error("Error during prediction:", error); [cite: 176]
+                    modelEstimate = "Prediction Error"; displayConfidenceStr = "-"; confidence = 0; [cite: 177]
+                } finally {
+                    if (inputTensor) inputTensor.dispose(); // Dispose input tensor [cite: 178]
+                    if (predictionTensor) predictionTensor.dispose(); // Dispose prediction tensor [cite: 179]
+                }
+            } else {
+                if (!poseModel) console.error("Pose model not loaded!"); [cite: 180]
+                if (!inputTensor) console.error("Failed to create input tensor."); [cite: 180]
+                modelEstimate = "Input/Model Error"; confidence = 0; displayConfidenceStr = "-"; [cite: 181]
+            }
+
+            // --- Step 3: Apply Rules for Final Pose Determination ---
+            const confidencePercent = confidence * 100; [cite: 182]
+            let potentialPose = modelEstimate;
+            if (confidencePercent < CONFIDENCE_THRESHOLD_PERCENT) {
+                finalPose = "Neutral"; [cite: 183]
+            } else {
+                finalPose = potentialPose; [cite: 184]
+                const isPushup = finalPose.startsWith('pushup_');
+                const isPullup = finalPose.startsWith('pullup_');
+                const isSquat = finalPose.startsWith('squat_');
+                const isCurl = finalPose.startsWith('curl_') || (finalPose === 'squat_up' && (isBarbellDetected || isDumbbellsDetected)); [cite: 185]
+
+                // Equipment Rules
+                if (isPushup && (isPullupBarDetected || isBarbellDetected || isDumbbellsDetected)) { finalPose = "No Pose"; [cite: 186]
+                }
+                else if (isCurl && !isBarbellDetected && !isDumbbellsDetected) { finalPose = "No Pose"; [cite: 187]
+                }
+                else if (finalPose.startsWith('squat_down') && !isBarbellDetected && !isDumbbellsDetected) { finalPose = "No Pose"; [cite: 188]
+                }
+                else if (isPullup && (!isPullupBarDetected || isBarbellDetected || isDumbbellsDetected)) { finalPose = "No Pose"; [cite: 189]
+                }
+
+                // Orientation Rules
+                if (finalPose.startsWith('pushup_') && orientation !== "Horizontal") { finalPose = "No Pose"; [cite: 190]
+                }
+                if (finalPose.startsWith('pullup_') && orientation !== "Vertical") { finalPose = "No Pose"; [cite: 191]
+                }
+            }
+        } else {
+            displayConfidenceStr = "-"; [cite: 192]
+            finalPose = "Neutral"; [cite: 192]
+        }
+
+        // --- Step 4: Update History and UI ---
+        poseHistory.push(finalPose); [cite: 193]
+        if (poseHistory.length > POSE_HISTORY_LENGTH) { poseHistory.shift(); } [cite: 193]
+        try {
+            document.getElementById("pose-estimate").innerText = modelEstimate; [cite: 194]
+            document.getElementById("pose-confidence").innerText = displayConfidenceStr; [cite: 194]
+            document.getElementById("orientation-value").innerText = orientation;
+            document.getElementById("final-pose").innerText = finalPose;
+        } catch(e) { console.error("Error updating estimation UI:", e); [cite: 195]
+        }
+
+        // --- Step 5: Update Rep Counters and Phase ---
+        try { updateRepCountersAndPhase(finalPose, currentKeypoints); [cite: 196]
+        }
+        catch (repError) { console.error("Error calling updateRepCountersAndPhase:", repError); [cite: 197]
+        }
+
+        // --- Step 6: Log Data ---
+        poseSequenceLog.push({
+            timestamp: frameTimestamp, // Use consistent timestamp
+            modelEstimate: modelEstimate, confidence: displayConfidenceStr, orientation: orientation, finalPose: finalPose,
+        }); [cite: 198]
+    } catch (processError) {
+        console.error("Error in processPoseDetection:", processError); [cite: 199]
+    }
+}
+
+
+// --- Drawing Function: Draw keypoints on the overlay canvas ---
+function drawKeypointsScaled(kpArray, ctx, videoWidth, videoHeight) {
+    if (!ctx || !kpArray || !overlayCanvas) return; [cite: 200]
+    const canvasWidth = overlayCanvas.width; const canvasHeight = overlayCanvas.height;
+    if (!videoWidth || !videoHeight || !canvasWidth || !canvasHeight) return; [cite: 201]
+    const ratioX = canvasWidth / videoWidth; const ratioY = canvasHeight / videoHeight;
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight); ctx.fillStyle = "lime"; [cite: 202]
+    kpArray.forEach(kp => {
+        if (kp && typeof kp.score === 'number' && kp.score > 0.3) {
+            const dx = kp.x * ratioX; const dy = kp.y * ratioY;
+            ctx.beginPath(); ctx.arc(dx, dy, 5, 0, 2 * Math.PI); ctx.fill();
+        }
+    }); [cite: 203]
+}
+
+// --- Detection Loops (Using setTimeout for controlled FPS) ---
+function startWebcamDetectionLoop() {
+    if (rafId) return; [cite: 204]
+    console.log(`Webcam detection loop initiated with ~${1000/FRAME_PROCESSING_INTERVAL_MS} FPS target.`); [cite: 204]
+    const detect = async () => {
+        if (!isInputRunning || isProcessingVideoFile || !detector || !poseModel || !displayVideo || displayVideo.paused || displayVideo.ended) {
+            console.log("Stopping webcam detection loop due to state change."); [cite: 205]
+            if (rafId) clearTimeout(rafId); rafId = null; return; [cite: 205]
+        }
+        let poses = null; [cite: 206]
+        try { poses = await detector.estimatePoses(displayVideo, { flipHorizontal: false }); [cite: 207]
+        }
+        catch (err) { console.error("MoveNet webcam pose estimation error:", err); [cite: 208]
+        }
+        if (overlayCtx && poses?.[0]?.keypoints) {
+            drawKeypointsScaled(poses[0].keypoints, overlayCtx, displayVideo.videoWidth, displayVideo.videoHeight); [cite: 209]
+        } else if (overlayCtx) { overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); }
+        try { await processPoseDetection(poses); [cite: 210]
+        } // Await processing
+        catch (e) { console.error("Error during processPoseDetection in webcam loop:", e); [cite: 211]
+        }
+        if (isInputRunning && !isProcessingVideoFile) { rafId = setTimeout(detect, FRAME_PROCESSING_INTERVAL_MS); [cite: 212]
+        }
+        else { if (rafId) clearTimeout(rafId); rafId = null; [cite: 213]
+            console.log("Webcam stopped or switched mode, ending detection loop."); } [cite: 213]
+    }; [cite: 214]
+    if (isInputRunning && !isProcessingVideoFile) { rafId = setTimeout(detect, 0); } [cite: 214]
+}
+function startVideoFileProcessingLoop() {
+    if (videoProcessingHandle) return; [cite: 215]
+    console.log(`Video file processing loop initiated with ~${1000/FRAME_PROCESSING_INTERVAL_MS} FPS target.`); [cite: 215]
+    const processFrame = async () => {
+        if (!isInputRunning || !isProcessingVideoFile || !detector || !poseModel || !displayVideo || displayVideo.paused || displayVideo.ended) {
+            console.log("Stopping video file processing loop due to state change."); [cite: 216]
+            if (videoProcessingHandle) clearTimeout(videoProcessingHandle); videoProcessingHandle = null; [cite: 216]
+            if(displayVideo.ended) {
+                downloadLogBtn.disabled = poseSequenceLog.length === 0; [cite: 217]
+                inputStatusElement.textContent = "Video processing finished."; [cite: 217]
+                setUIButtonState(false, true);
+            } return;
+        }
+        let poses = null; [cite: 218]
+        try {
+            if (displayVideo.readyState >= 2) { poses = await detector.estimatePoses(displayVideo, { flipHorizontal: false }); [cite: 219]
+            }
+            else { console.warn("Video frame not ready for estimation."); [cite: 220]
+            }
+        } catch (err) { console.error("MoveNet video file pose estimation error:", err); [cite: 221]
+        }
+        if (overlayCtx && poses?.[0]?.keypoints) {
+            drawKeypointsScaled(poses[0].keypoints, overlayCtx, displayVideo.videoWidth, displayVideo.videoHeight); [cite: 222]
+        } else if (overlayCtx) { overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); }
+        try { await processPoseDetection(poses); [cite: 223]
+        } // Await processing
+        catch (e) { console.error("Error during processPoseDetection in video loop:", e); [cite: 224]
+        }
+        if (isInputRunning && isProcessingVideoFile) { videoProcessingHandle = setTimeout(processFrame, FRAME_PROCESSING_INTERVAL_MS); [cite: 225]
+        }
+        else { if (videoProcessingHandle) clearTimeout(videoProcessingHandle); videoProcessingHandle = null; [cite: 226]
+            console.log("Video processing stopped or switched mode, ending loop."); } [cite: 226]
+    }; [cite: 227]
+    if (isInputRunning && isProcessingVideoFile) { videoProcessingHandle = setTimeout(processFrame, 0); } [cite: 227]
+}
+
+// --- Reset Reps and States ---
+function resetReps() {
+    console.log("Resetting Rep Counts and States."); [cite: 228]
+    pushupReps = 0; pullupReps = 0; squatReps = 0; curlReps = 0; [cite: 228]
+    pushupState = 'UP'; pullupState = 'DOWN'; [cite: 229]
+    squatState = 'UP'; curlState = 'DOWN'; [cite: 229]
+    pushupPhase = ''; pullupPhase = ''; squatPhase = ''; curlPhase = ''; [cite: 230]
+    curlDownFrames = 0; poseHistory = []; pushupLastSeenPose = null; pushupConsecutiveCount = 0; [cite: 230]
+    try { [cite: 231]
+        document.getElementById('pushup-reps').innerText = pushupReps; document.getElementById('pullup-reps').innerText = pullupReps;
+        document.getElementById('squat-reps').innerText = squatReps; [cite: 232]
+        document.getElementById('curl-reps').innerText = curlReps; [cite: 232]
+        document.getElementById('pushup-phase').innerText = ''; document.getElementById('pullup-phase').innerText = '';
+        document.getElementById('squat-phase').innerText = ''; document.getElementById('curl-phase').innerText = ''; [cite: 233]
+    } catch (e) { console.error("Error updating UI elements on reset:", e); [cite: 234]
+    }
+}
+
+// --- Input Control Functions ---
+async function startWebcam() {
+    console.log("Attempting to start webcam..."); [cite: 235]
+    if (isInputRunning) { console.log("Input is already running. Stop first."); return; [cite: 236]
+    }
+    if (!detector || !poseModel || !scalerParams || !labelMap) {
+        inputStatusElement.textContent = "Error: Required resources not ready."; [cite: 237]
+        console.error("Cannot start webcam, resources not loaded."); return; [cite: 237]
+    }
+    displayVideo.srcObject = null; displayVideo.src = ''; displayVideo.removeAttribute('src'); [cite: 238]
+    inputStatusElement.textContent = "Requesting camera access..."; setUIButtonState(true, false); [cite: 238]
+    try {
+        // *** MODIFIED LINE HERE ***
+        // Prioritize front-facing camera ('user'). Desktop/other devices should fall back.
+        activeInputStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        // *** END MODIFIED LINE ***
+
+        console.log("Camera stream acquired."); inputStatusElement.textContent = "Camera accessed, starting feed..."; [cite: 239]
+        displayVideo.srcObject = activeInputStream; displayVideo.muted = true; displayVideo.controls = false; [cite: 240]
+        await new Promise((resolve, reject) => {
+            displayVideo.onloadedmetadata = () => { console.log("Webcam metadata loaded:", displayVideo.videoWidth, "x", displayVideo.videoHeight); resizeOverlayCanvas(); resolve(); };
+            displayVideo.onerror = (e) => reject(new Error("Video metadata error"));
+        }); [cite: 241]
+        await displayVideo.play().catch(playError => {
+            console.error("Error playing video stream:", playError); inputStatusElement.textContent = `Error playing stream: ${playError.message}`;
+            if (activeInputStream) { activeInputStream.getTracks().forEach(track => track.stop()); } activeInputStream = null; throw playError;
+        }); [cite: 242]
+        console.log("Webcam video playing."); isInputRunning = true; isProcessingVideoFile = false; [cite: 242]
+        displaySection.style.display = 'block'; clearPoseSequenceLog(); resetReps();
+        startWebcamDetectionLoop(); setUIButtonState(true, true); [cite: 243]
+        inputStatusElement.textContent = "Webcam active"; [cite: 243]
+    } catch (err) { console.error("Failed to start webcam:", err); handleMediaError(err); stopInput(); [cite: 244]
+    }
+}
+function stopInput() {
+    console.log("Stopping input..."); isInputRunning = false; isProcessingVideoFile = false;
+    if (rafId) { clearTimeout(rafId); [cite: 245]
+        rafId = null; console.log("Webcam detection loop timer stopped."); } [cite: 245]
+    if (videoProcessingHandle) { clearTimeout(videoProcessingHandle); videoProcessingHandle = null; [cite: 246]
+        console.log("Video processing loop timer stopped."); } [cite: 246]
+    if (activeInputStream) { activeInputStream.getTracks().forEach(track => track.stop()); activeInputStream = null; [cite: 247]
+        console.log("Camera stream tracks stopped."); } [cite: 247]
+    displayVideo.pause(); displayVideo.srcObject = null;
+    if (displayVideo.src && displayVideo.src.startsWith('blob:')) { URL.revokeObjectURL(displayVideo.src); [cite: 248]
+    }
+    displayVideo.removeAttribute('src'); displayVideo.load(); [cite: 248]
+    if (overlayCtx) { overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); }
+    setUIButtonState(false, false); [cite: 249]
+    inputStatusElement.textContent = "Input stopped. Select input to start."; [cite: 249]
+    displaySection.style.display = 'none'; videoUploadInput.value = '';
+    console.log(`Input stopped. Log contains ${poseSequenceLog.length} entries.`); [cite: 250]
+    downloadLogBtn.disabled = poseSequenceLog.length === 0; [cite: 250]
+}
+function handleVideoUpload(event) {
+    const file = event.target.files[0]; [cite: 251]
+    if (!file) { console.log("No video file selected."); return; } [cite: 251]
+    console.log("Video file selected:", file.name); [cite: 252]
+    if (isInputRunning) { console.log("Input running. Stopping it first."); stopInput(); } [cite: 252]
+    const fileURL = URL.createObjectURL(file);
+    displayVideo.srcObject = null; [cite: 253]
+    displayVideo.src = fileURL; displayVideo.muted = false; displayVideo.controls = true; [cite: 253]
+    inputStatusElement.textContent = "Video selected. Press Play on video to process."; [cite: 254]
+    displaySection.style.display = 'block'; setUIButtonState(false, true); [cite: 254]
+    displayVideo.onloadedmetadata = () => {
+        console.log("Video metadata loaded:", displayVideo.videoWidth, "x", displayVideo.videoHeight); [cite: 255]
+        resizeOverlayCanvas(); clearPoseSequenceLog(); resetReps(); downloadLogBtn.disabled = true; [cite: 255]
+    };
+    displayVideo.onplay = () => {
+        console.log("Video playback started."); [cite: 256]
+        inputStatusElement.textContent = "Processing video..."; [cite: 256]
+        isInputRunning = true; isProcessingVideoFile = true; setUIButtonState(true, true); [cite: 257]
+        startVideoFileProcessingLoop(); [cite: 257]
+    };
+    displayVideo.onpause = () => { console.log("Video playback paused."); if (isInputRunning) { inputStatusElement.textContent = "Video paused. Resume or Stop."; } }; [cite: 257]
+    displayVideo.onended = () => { console.log("Video playback ended."); /* Loop handles stopping */ }; [cite: 258]
+    displayVideo.onerror = (e) => { console.error("Error loading or playing video file:", e); [cite: 259]
+        inputStatusElement.textContent = "Error loading video file. Please try another."; stopInput(); URL.revokeObjectURL(fileURL); }; [cite: 260]
+}
+
+// --- Utility Functions ---
+function resizeOverlayCanvas() {
+    const vw = displayVideo.videoWidth; const vh = displayVideo.videoHeight; [cite: 261]
+    if (overlayCanvas && vw && vh) { overlayCanvas.width = vw; overlayCanvas.height = vh; console.log(`Canvas resized to: ${vw}x${vh}`); [cite: 262]
+    }
+    else { console.warn("Could not resize overlay canvas - missing canvas or video dimensions."); [cite: 263]
+    }
+}
+function setUIButtonState(isRunning, inputActive) {
+    startWebcamBtn.disabled = inputActive; stopInputBtn.disabled = !isRunning;
+    videoUploadInput.disabled = isRunning && !isProcessingVideoFile; [cite: 265]
+}
+function handleMediaError(err) {
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") { inputStatusElement.textContent = "Error: Camera permission denied."; [cite: 266]
+        alert("Camera permission was denied..."); } [cite: 266]
+    else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") { inputStatusElement.textContent = "Error: No camera found."; [cite: 267]
+        alert("No camera device was found..."); } [cite: 267]
+    else if (err.name === "NotReadableError" || err.name === "TrackStartError") { inputStatusElement.textContent = "Error: Camera is already in use."; [cite: 268]
+        alert("The camera might be in use..."); } [cite: 268]
+    else { inputStatusElement.textContent = `Error: ${err.name || 'Unknown error'}. Check console.`; [cite: 269]
+        alert(`An unexpected error occurred...: ${err.message}`); } [cite: 269]
+}
+function clearPoseSequenceLog() { poseSequenceLog = []; downloadLogBtn.disabled = true; [cite: 270]
+    console.log("Internal pose sequence log cleared."); } [cite: 270]
+function downloadPoseLog() {
+    if (poseSequenceLog.length === 0) { alert("No pose data logged to download."); [cite: 271]
+        return; } [cite: 271]
+    console.log(`Preparing download for ${poseSequenceLog.length} log entries.`); [cite: 272]
+    try {
+        const jsonString = JSON.stringify(poseSequenceLog, null, 2); [cite: 273]
+        const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); [cite: 273]
+        const a = document.createElement('a'); a.href = url; [cite: 274]
+        a.download = `pose_log_${new Date().toISOString().replace(/[:.]/g, '-')}.json`; [cite: 274]
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        console.log("Log download initiated."); [cite: 275]
+    } catch (error) { console.error("Error creating or downloading log file:", error); alert("Failed to download log file. See console for details."); [cite: 276]
+    }
+}
+
+// --- Initialization ---
+window.addEventListener('DOMContentLoaded', async () => {
+    console.log("DOM fully loaded and parsed.");
+    displayVideo = document.getElementById('display-video'); overlayCanvas = document.getElementById('overlay');
+    videoUploadInput = document.getElementById('video-upload'); stopInputBtn = document.getElementById('stop-input-btn');
+    downloadLogBtn = document.getElementById('download-log-btn'); displaySection = document.getElementById('display-section');
+    const pullupBarToggle = document.getElementById('pullup-bar-toggle'); const barbellToggle = document.getElementById('barbell-toggle');
+    const dumbbellsToggle = document.getElementById('dumbbells-toggle');
+    if (overlayCanvas) { overlayCtx = overlayCanvas.getContext('2d'); } else { console.error("Overlay canvas not found!"); }
+    await loadAppResources();
+    startWebcamBtn.addEventListener('click', startWebcam); stopInputBtn.addEventListener('click', stopInput);
+    videoUploadInput.addEventListener('change', handleVideoUpload); [cite: 277]
+    downloadLogBtn.addEventListener('click', downloadPoseLog); [cite: 277]
+    displayVideo.onloadedmetadata = resizeOverlayCanvas;
+    pullupBarToggle.addEventListener('change', (event) => { isPullupBarDetected = event.target.checked; console.log(`Pullup Bar Detected: ${isPullupBarDetected}`); }); [cite: 278]
+    barbellToggle.addEventListener('change', (event) => { isBarbellDetected = event.target.checked; console.log(`Barbell Detected: ${isBarbellDetected}`); }); [cite: 279]
+    dumbbellsToggle.addEventListener('change', (event) => { isDumbbellsDetected = event.target.checked; console.log(`Dumbbells Detected: ${isDumbbellsDetected}`); }); [cite: 279]
+    setUIButtonState(false, false); resetReps(); [cite: 280]
+});
+</script>
+
+</body>
+</html>
